@@ -33,7 +33,7 @@ app.get('/', async (req, res) => {
         
         if (Array.isArray(response.data)) {
             servicesHtml = response.data.map(s => 
-                `<option value="${s.service}" data-rate="${s.rate}">[${s.category}] ID: ${s.service} - ${s.name} - ($${s.rate}/1k)</option>`
+                `<option value="${s.service}" data-name="${s.name.toLowerCase()}" data-rate="${s.rate}">[${s.category}] ID: ${s.service} - ${s.name} - ($${s.rate}/1k)</option>`
             ).join('');
         }
     } catch (err) {
@@ -60,6 +60,12 @@ app.get('/', async (req, res) => {
             .btn:hover { background: #d32f2f; }
             #status { text-align: center; margin-top: 15px; font-weight: bold; color: #ffcc00; font-size: 15px; }
             .cost-display { margin-top: 10px; font-size: 13px; color: #a5d6a7; font-weight: bold; }
+            
+            /* Animation for smooth hide/show */
+            .poll-container {
+                display: none;
+                transition: all 0.3s ease-in-out;
+            }
         </style>
     </head>
     <body>
@@ -75,11 +81,14 @@ app.get('/', async (req, res) => {
                 <label>Select Server Service</label>
                 <select id="service" class="form-control" required>${servicesHtml}</select>
 
-                <label>Target Link (WhatsApp Poll / Social Profile)</label>
+                <label>Target Link (WhatsApp / TikTok / Social Link)</label>
                 <input type="url" id="link" class="form-control" placeholder="https://..." required>
 
-                <label>Poll Option / Target Answer (If WhatsApp Poll)</label>
-                <input type="text" id="answer" class="form-control" placeholder="e.g. A, B, Option 1, Yes, 100 (Leave blank for normal links)">
+                <!-- Dynamic Wrapper for Poll Options -->
+                <div id="pollFieldWrapper" class="poll-container">
+                    <label>Poll Option / Target Answer (A-Z or 1-100)</label>
+                    <input type="text" id="answer" class="form-control" placeholder="e.g., A, B, Option 1, Yes, 55...">
+                </div>
 
                 <label>Quantity</label>
                 <input type="number" id="quantity" class="form-control" placeholder="e.g. 1000" required>
@@ -94,17 +103,38 @@ app.get('/', async (req, res) => {
             const serviceSelect = document.getElementById('service');
             const quantityInput = document.getElementById('quantity');
             const costEstimate = document.getElementById('costEstimate');
+            const pollFieldWrapper = document.getElementById('pollFieldWrapper');
+            const answerInput = document.getElementById('answer');
 
-            function calculateCost() {
+            // Function to handle smart hide/show based on service name
+            function handleServiceUIChange() {
                 const selectedOption = serviceSelect.options[serviceSelect.selectedIndex];
+                if (!selectedOption) return;
+
+                const serviceName = selectedOption.getAttribute('data-name') || '';
                 const rate = parseFloat(selectedOption.getAttribute('data-rate')) || 0;
+                
+                // Smart Check: Agar service name me poll ya vote aye to show karein
+                if (serviceName.includes('poll') || serviceName.includes('vote')) {
+                    pollFieldWrapper.style.display = 'block';
+                    answerInput.setAttribute('required', 'true');
+                } else {
+                    pollFieldWrapper.style.display = 'none';
+                    answerInput.removeAttribute('required');
+                    answerInput.value = ''; // Reset if hidden
+                }
+
+                // Recalculate cost
                 const qty = parseInt(quantityInput.value) || 0;
                 const cost = (rate / 1000) * qty;
                 costEstimate.innerText = "Estimated Cost: $" + cost.toFixed(4);
             }
 
-            serviceSelect.addEventListener('change', calculateCost);
-            quantityInput.addEventListener('input', calculateCost);
+            serviceSelect.addEventListener('change', handleServiceUIChange);
+            quantityInput.addEventListener('input', handleServiceUIChange);
+
+            // Initial trigger on load to make sure UI states align
+            window.addEventListener('DOMContentLoaded', handleServiceUIChange);
 
             document.getElementById('orderForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -116,7 +146,7 @@ app.get('/', async (req, res) => {
                     service: serviceSelect.value,
                     link: document.getElementById('link').value,
                     quantity: quantityInput.value,
-                    answer: document.getElementById('answer').value
+                    answer: answerInput.value
                 };
 
                 try {
@@ -131,7 +161,7 @@ app.get('/', async (req, res) => {
                         statusDiv.innerText = "✅ Success! Order ID: " + data.order;
                     } else {
                         statusDiv.style.color = "#ff3333";
-                        statusDiv.innerText = "❌ API Error: " + (data.error || "Check Funds");
+                        statusDiv.innerText = "❌ API Error: " + (data.error || "Check Funds / Options");
                     }
                 } catch(err) {
                     statusDiv.style.color = "#ff3333";
@@ -144,11 +174,10 @@ app.get('/', async (req, res) => {
     `);
 });
 
-// Order Router Engine (Handles Answer mapping seamlessly)
+// Order Router Engine (Handles Custom Routing Parameters)
 app.post('/api/place-order', async (req, res) => {
     const { service, link, quantity, answer } = req.body;
     
-    // SMM panels structure standard payload configuration
     const postParams = {
         key: API_KEY,
         action: 'add',
@@ -157,7 +186,7 @@ app.post('/api/place-order', async (req, res) => {
         quantity: quantity
     };
 
-    // If answer option is provided, map it dynamically to standard custom parameters
+    // Forward the mapped answer option only if it's filled on the screen
     if (answer && answer.trim() !== "") {
         postParams['answer'] = answer.trim(); 
     }
@@ -171,4 +200,4 @@ app.post('/api/place-order', async (req, res) => {
 });
 
 module.exports = app;
-        
+    
